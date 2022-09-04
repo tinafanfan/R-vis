@@ -1,0 +1,203 @@
+---
+title: "ggplot2 系列"
+author: "Yuting Fan"
+date: "11/3/2020"
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+Packages <- c("ggplot2","colorRamps", "tidyr")
+# install.packages(Packages)
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+## Theme
+
+Customize the non-data components of your plots: i.e. titles, labels, fonts, background, guidelines, and legends. [link](https://ggplot2.tidyverse.org/reference/theme.html)
+
+## Contour map
+
+利用 ggplot2 畫 contour map (basic 中會用 image.plot)
+
+1.  利用 `for` 迴圈產生 surface 值 (是否有更好的方法?)
+
+2.  利用 `spatstat::im` to creates an object of class "im" representing a two-dimensional pixel image. 這可以使原本25x25的資料，轉成625x3 (tidy data format)
+
+3.  利用 `geom_raster` + `fill` 畫
+
+4.  外觀
+
+    1.  利用 `scale_fill_gradientn` 調整顏色 (blue2green2red 是 colorRamps package中的調色盤)
+
+    2.  例用 `guide` legend 調整長度
+
+※ 詳見 file = "\~/Documents/3\_Research/201810\_GWR/script/1\_simulation\_mgwrpaper/design\_1/design\_1.R"
+
+```{r}
+grid_max <- 25; grid_length <- 25
+x <- seq(0,grid_max, length.out = grid_length)
+y <- seq(0,grid_max, length.out = grid_length)
+
+beta_1 <- matrix(NA, length(x), length(y))
+for(i in 1:length(x)){
+    for(j in 1:length(y)){
+        beta_1[i,j] <- 1 + (1/12) * (x[i] + y[j])
+    }
+}
+
+beta1_im <- spatstat::im(beta_1, xcol = x, yrow = y)
+beta1_col <- as.data.frame(beta1_im)
+
+ggplot(beta1_col, aes(x, y)) +
+    geom_raster(aes(fill = value)) +
+    scale_fill_gradientn(colors = blue2green2red(400)) + # in package colorRamps
+    theme(legend.title=element_blank(),
+          panel.background = element_rect(colour = "white", fill=NA, size=1),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          plot.margin = margin(0, 0, 0, 0, "cm"),
+          axis.title.x=element_blank(),
+          axis.text.x =element_blank(),
+          axis.ticks.x=element_blank(),
+          axis.title.y=element_blank(),
+          axis.text.y =element_blank(),
+          axis.ticks.y=element_blank(),
+          legend.text=element_text(size=14),
+          # legend.position = c(1.03,0.51),
+          # legend.position = "none"
+          ) +
+    guides(fill = guide_colourbar(barwidth = 1, barheight = 28.5))
+
+# png(paste0("beta_true.png"), width = 150, height = 150, units = "mm", res = 300)
+# plot.new()
+# print(contour_plot[[i]])
+# dev.off()
+```
+
+## Boxplot
+
+利用 iris 資料展示 boxplot 五個並排於一個圖內，以有明顯色差之灰階表示
+
+1.  利用 `dplyr::gather` 進行 wide to long (tidy)
+
+2.  利用 `geom_boxplot` 畫盒鬚圖
+
+3.  外觀
+
+    1.  `scale_x_discrete` : 移除 x label
+
+    2.  `scale_fill_manual` : 調整盒子的顏色
+
+※ 詳見file = "\~/Documents/3\_Research/201810\_GWR/script/1\_simulation\_mgwrpaper/design\_1/visualization\_RMSE.R"
+
+```{r, fig_height = 8}
+df <- gather(iris[,c(1,2,3,4,1)],name, value, Sepal.Length:Sepal.Length.1)
+ggplot(data = df,aes(x = name, y=value, fill=name)) +
+        geom_boxplot() +
+        xlab("") +
+        ylab("") +
+        ylim(c(0, 10)) +
+        scale_x_discrete(labels = "") + # remove x lab
+        scale_fill_manual(name = "",values=c("white", "grey90", "grey50", "grey30", "black")) +
+        theme(panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank(),
+              panel.background = element_blank(), 
+              panel.border = element_rect(colour = "black", fill=NA),
+              legend.position = c(0.2, 0.83),
+              axis.text.x=element_blank(),
+              axis.text.y=element_text(size=14),
+              axis.title=element_text(size=14),
+              legend.text = element_text(size=14),
+              legend.title = element_text(size=14),
+              legend.key = element_blank(),
+              axis.ticks.length = unit(0, "mm"), # remove a vertical line on x-axis
+              axis.title.x=element_blank()) # remove x-lab position
+```
+
+## Heat map
+
+```{r}
+library(pheatmap)
+
+
+cor.mt <- matrix(NA, 4, 4)
+for(i in 1:4){
+    for(j in 1:4){
+        # cor.mt[i-1,j-1] <- cor(phi.train[,i], phi.train[,j])
+        cor.mt[i,j] <- cor(iris[,i], iris[,j])
+    }
+}
+rownames(cor.mt) <- colnames(iris)[1:4]
+colnames(cor.mt) <- colnames(iris)[1:4]
+diag(cor.mt) <- 0
+
+pheatmap(cor.mt, cluster_rows = F, cluster_cols = F)
+
+
+
+```
+
+## Group Bar chart
+
+fracet\_grid: [ref1](http://zevross.com/blog/2019/04/02/easy-multi-panel-plots-in-r-using-facet_wrap-and-facet_grid-from-ggplot2/), [ref2](https://www.datanovia.com/en/blog/how-to-change-ggplot-facet-labels/)
+
+```{r}
+
+data <- data.frame(Company = c("LTC", "XRP", "HO1", "XLM", "CL1", 
+                               "CO1", "BCH", "ETH", "DL1", "NG1"),
+                   Stock = c(11.06,3.5, 0.35, 0.25, -0.15, -0.25, 
+                             -0.8,-1.2, -1.9, -4.42),
+                   Asset.Class = c("Top Cryptos", "Top Cryptos","Energy", 
+                                   "Top Cryptos", "Energy", "Energy","Top Cryptos",
+                                   "Top Cryptos", "Energy", "Energy"))
+
+data$pn <- ifelse(data$Stock>0, "p", "n")
+data$pn <- as.factor(data$pn)
+lim_u <- max(data$Stock)
+lim_l <- min(data$Stock)
+
+ggplot(data = data, aes(x = reorder(Company, Stock), 
+                        y = Stock,
+                        fill = pn))+ 
+    geom_bar(position="dodge",
+             stat="identity")+
+    scale_y_continuous(limits=c(-5,12), breaks = seq(-5,12,1))+
+    scale_fill_manual(values=c("#96A48E", "#A47C80"))+
+    facet_grid(~Asset.Class, scales="free_x", space = "free_x") +
+    labs(title = "Top Performers Over the Past 24 Hours",
+         subtitle = "Last Updated November 20, 2020 at 3:30 GMT",
+         # caption = "",
+         x = "Stock Symbol") +
+    theme(
+        panel.grid.major.y = element_line(colour = "grey95"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_rect(fill="white"),
+        panel.border = element_rect(colour = "black", fill=NA),
+        
+        plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
+        
+        
+          legend.position = "none",
+        
+          axis.text.x=element_text(angle = 90, hjust=0.95), # 股票代號靠上
+          axis.title.y=element_blank(),
+        axis.ticks.length = unit(0, "mm"),
+        
+          legend.text = element_text(size=14),
+          legend.title = element_text(size=14),
+          legend.key = element_blank(),
+          
+          plot.title = element_text(color = "Black", size = 24, face = "bold",hjust = 0.5),
+          plot.subtitle = element_text(color = "Grey40", size = 16, hjust = 0.5),
+        
+          strip.background = element_rect(color="black", fill="White",  linetype=0),
+          strip.text.x = element_text(size = 12, color = "black", face = "bold"
+          )) 
+
+
+```
